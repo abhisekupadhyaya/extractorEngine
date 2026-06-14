@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>On Writing Testable Code | Example Blog</title>
+  <meta property="og:title" content="On Writing Testable Code">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "On Writing Testable Code",
+    "author": [
+      {"@type": "Person", "name": "Ada Lovelace"},
+      {"@type": "Person", "name": "Charles Babbage"}
+    ],
+    "datePublished": "2021-03-04T08:00:00+00:00",
+    "keywords": ["testing", "engineering"]
+  }
+  </script>
+</head>
+<body>
+  <nav><a href="/">Home</a> <a href="/blog">Blog</a></nav>
+  <article>
+    <h1>On Writing Testable Code</h1>
+    <p>Testable code is not an accident; it is the residue of a boundary drawn on
+       purpose. When the part of a system that decides behavior is kept free of
+       input and output, it can be exercised exhaustively on static fixtures with
+       no network and no clock, and that is what makes its tests both fast and
+       trustworthy over the long run.</p>
+    <p>The discipline is to push the messy, side-effecting work to the edges and
+       leave a pure core in the middle. The core becomes a plain function: data
+       in, data out, the same answer every time. Everything hard to reproduce is
+       then concentrated in one thin layer that you mock exactly once.</p>
+  </article>
+  <footer>© 2021 Example Blog</footer>
+</body>
+</html>

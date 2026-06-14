@@ -12,13 +12,17 @@ quality signals and metadata, and writes the result as newline-delimited JSON.
 ## Quickstart
 
 ```bash
-# 1. Install (editable, from the app/ package)
+# 1. Create and activate a virtual environment (the Makefile expects app/.venv)
+python -m venv app/.venv
+source app/.venv/bin/activate        # Windows: app\.venv\Scripts\activate
+
+# 2. Install (editable, from the app/ package)
 pip install -e ./app
 
-# 2. Run
+# 3. Run
 scrape_site --start-url=https://books.toscrape.com/ --max-pages=100 --output=output.jsonl
 
-# 3. Look at the result — one JSON document per line
+# 4. Look at the result — one JSON document per line
 head -n 1 output.jsonl
 ```
 
@@ -35,6 +39,31 @@ To crawl JavaScript-rendered sites, install the rendering extra and pass `--rend
 pip install -e "./app[render]"
 scrape_site --start-url=https://quotes.toscrape.com/js/ --render --output=output.jsonl
 ```
+
+## At a glance — what it does, where it lives, how to verify
+
+A one-line map of each capability to its home in the tree and a command that
+demonstrates it. Commands assume the dev install above and one sample run:
+
+```bash
+scrape_site --start-url=https://books.toscrape.com/ --max-pages=20 --output=out.jsonl
+```
+
+| Capability | Where | Verify |
+|---|---|---|
+| Crawl one site — seed → internal links, page/depth bounds, scope filter | `crawl/frontier.py`, `crawl/crawler.py` · [crawling.md](docs/crawling.md) | the sample run above |
+| Politeness & resilience — throttle, robots.txt, retries, typed error handling | `crawl/fetcher.py` · [crawling.md](docs/crawling.md) | run summary prints `fetch errors:` / `fetch intentional-skips:` |
+| Clean main-content extraction — title, url, `body_text` (no nav/footer) | `engine/extractor.py`, `engine/cleaner.py` · [extraction.md](docs/extraction.md) | `head -1 out.jsonl \| python -m json.tool` |
+| Metadata & quality signals — counts, language, content_type, dates, author, extraction layer | `engine/enricher.py` · [enrichment.md](docs/enrichment.md) | the `signals` block of any record |
+| Documented JSON schema for the document object | `engine/models.py` → [docs/schema.json](docs/schema.json) · [data-model.md](docs/data-model.md) | `make -C app schema` |
+| Valid, consistent JSONL output | `storage/jsonl.py` · [storage-and-idempotency.md](docs/storage-and-idempotency.md) | `python -c "import json; [json.loads(l) for l in open('out.jsonl')]"` |
+| Idempotent re-runs — no duplicate records | `storage/jsonl.py` · [storage-and-idempotency.md](docs/storage-and-idempotency.md) | re-run the sample → summary shows `insert=0 update=0` |
+| Maintainable separation — pure engine vs. dirty I/O | `engine/` vs `crawl/` · [architecture.md](docs/architecture.md) | the directory tree below |
+| Run telemetry — layer / drop / fetch-outcome distributions | `crawl/crawler.py` · [observability.md](docs/observability.md) | add `--stats-json stats.json`, then `cat stats.json` |
+| Configurable URL filters | `--include` / `--exclude` · [configuration.md](docs/configuration.md) | `scrape_site … --include=/catalogue/` |
+| Corpus analytics | `analytics.py` | `python -m extractor_engine.analytics out.jsonl` |
+| Tests | `tests/` · [testing.md](docs/testing.md) | `make -C app test` |
+| Container build | `app/Dockerfile` | `docker build -f app/Dockerfile app` |
 
 ## What it produces
 
@@ -58,7 +87,7 @@ One **document object** per kept page, serialized as one line of JSONL:
     "language": "en",
     "content_type": "product_page",
     "is_mostly_code": false,
-    "extraction_layer": "library"
+    "extraction_layer": "semantic"
   },
   "extra": {}
 }
@@ -128,8 +157,8 @@ Configured by CLI flags and environment variables, resolved **CLI flag > env var
 run statistics as JSON), `--render` (render JavaScript pages; needs the `[render]`
 extra, off by default), `--render-timeout`, and `--no-conditional-get` (re-crawls
 skip `If-Modified-Since` and always re-download). The default run needs **zero
-infrastructure**; optional Postgres / object-storage backends activate only when
-their environment variables are set. Full reference:
+infrastructure**; an optional Postgres state backend activates only when its
+`POSTGRES_DSN` environment variable is set. Full reference:
 [docs/configuration.md](docs/configuration.md).
 
 ## Site chosen and why
@@ -182,6 +211,7 @@ trade-offs — is in [docs/design-decisions.md](docs/design-decisions.md).
 | [testing.md](docs/testing.md) | Test strategy |
 | [design-decisions.md](docs/design-decisions.md) | The key design decisions and why |
 | [future-work.md](docs/future-work.md) | Production evolution and deliberate boundaries |
+| [REVIEW.md](docs/REVIEW.md) | Corpus review: per-site results, layer/drop distributions, and before/after evidence from real runs |
 
 ## Testing
 

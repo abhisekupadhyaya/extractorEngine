@@ -90,7 +90,7 @@ def _doc(doc_id: str, body: str) -> Document:
         content_hash=hashlib.sha256(body.encode()).hexdigest(),
         signals=Signals(
             word_count=30, char_count=len(body), language="en",
-            content_type="article", is_mostly_code=False,
+            content_type="article", extraction_layer="semantic", is_mostly_code=False,
         ),
     )
 

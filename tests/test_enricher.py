@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 from extractor_engine.engine.enricher import (
     classify_content_type,
     detect_language,
+    extract_author,
     extract_dates,
     extract_extra,
     extract_tags,
@@ -173,6 +174,50 @@ class TestExtractExtra:
 
 
 # --------------------------------------------------------------------------- #
+# author
+# --------------------------------------------------------------------------- #
+class TestExtractAuthor:
+    def test_jsonld_person_name(self) -> None:
+        html = (
+            '<script type="application/ld+json">'
+            '{"@type":"Article","author":{"@type":"Person","name":"Ada Lovelace"}}</script>'
+        )
+        assert extract_author(soup(html), {}) == "Ada Lovelace"
+
+    def test_jsonld_author_list_takes_first(self) -> None:
+        html = (
+            '<script type="application/ld+json">'
+            '{"author":[{"name":"First Writer"},{"name":"Second Writer"}]}</script>'
+        )
+        assert extract_author(soup(html), {}) == "First Writer"
+
+    def test_jsonld_author_plain_string(self) -> None:
+        html = '<script type="application/ld+json">{"author":"Plain Name"}</script>'
+        assert extract_author(soup(html), {}) == "Plain Name"
+
+    def test_article_author_meta(self) -> None:
+        html = '<html><head><meta property="article:author" content="Meta Author"></head></html>'
+        assert extract_author(soup(html), {}) == "Meta Author"
+
+    def test_meta_name_author(self) -> None:
+        html = '<html><head><meta name="author" content="Name Author"></head></html>'
+        assert extract_author(soup(html), {}) == "Name Author"
+
+    def test_jsonld_outranks_meta(self) -> None:
+        html = (
+            '<script type="application/ld+json">{"author":{"name":"JSONLD Author"}}</script>'
+            '<meta name="author" content="Meta Author">'
+        )
+        assert extract_author(soup(html), {}) == "JSONLD Author"
+
+    def test_library_author_fallback(self) -> None:
+        assert extract_author(soup("<html></html>"), {"author": "Library Author"}) == "Library Author"
+
+    def test_none_when_no_author(self) -> None:
+        assert extract_author(soup("<html><body><p>x</p></body></html>"), {}) is None
+
+
+# --------------------------------------------------------------------------- #
 # quality gate
 # --------------------------------------------------------------------------- #
 def _doc(word_count: int, content_type: ContentType) -> Document:
@@ -185,7 +230,7 @@ def _doc(word_count: int, content_type: ContentType) -> Document:
         content_hash="h",
         signals=Signals(
             word_count=word_count, char_count=10, language="en",
-            content_type=content_type, is_mostly_code=False,
+            content_type=content_type, extraction_layer="semantic", is_mostly_code=False,
         ),
     )
 

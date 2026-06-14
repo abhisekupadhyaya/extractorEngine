@@ -74,6 +74,7 @@ def enrich(
         char_count=len(body_text),
         language=detect_language(body_text),
         content_type=classify_content_type(soup, url, link_density_threshold),
+        extraction_layer=result.body_layer,
         is_mostly_code=is_mostly_code(soup, code_ratio_threshold),
     )
     published_at, modified_at = extract_dates(soup, last_modified)
@@ -83,6 +84,7 @@ def enrich(
         url=url,
         title=result.title,
         body_text=body_text,
+        author=extract_author(soup, result.meta),
         tags=extract_tags(soup, result.meta),
         published_at=published_at,
         modified_at=modified_at,
@@ -252,6 +254,55 @@ def _jsonld_tags(soup: BeautifulSoup) -> list[str]:
             elif isinstance(value, list):
                 out.extend(str(item) for item in value)
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Author
+# --------------------------------------------------------------------------- #
+def extract_author(soup: BeautifulSoup, meta: dict[str, object]) -> str | None:
+    """Resolve the primary author from generic declared sources, or ``None``.
+
+    Sources, most authoritative first: JSON-LD ``author`` (a ``Person``/
+    ``Organization`` ``name``, or the first entry if it is a list), OpenGraph
+    ``article:author``, ``<meta name="author">``, and the extraction library's
+    parsed author. Only standard, generic sources are read — never site-specific
+    selectors. For a multi-author page only the primary (first) author is
+    recorded. ``None`` means "no author declared". See ``docs/enrichment.md``.
+    """
+    library_author = meta.get("author")
+    for candidate in (
+        _jsonld_author(soup),
+        _meta_content(soup, "article:author"),
+        _meta_content(soup, "author"),
+        library_author if isinstance(library_author, str) else None,
+    ):
+        if candidate and candidate.strip():
+            return candidate.strip()
+    return None
+
+
+def _jsonld_author(soup: BeautifulSoup) -> str | None:
+    """The first author name declared in any JSON-LD object."""
+    for block in _jsonld_objects(soup):
+        name = _author_name(block.get("author"))
+        if name:
+            return name
+    return None
+
+
+def _author_name(author: object) -> str | None:
+    """Resolve a name from a JSON-LD ``author`` value (string / object / list)."""
+    if isinstance(author, str):
+        return author
+    if isinstance(author, dict):
+        name = author.get("name")
+        return name if isinstance(name, str) else None
+    if isinstance(author, list):
+        for item in author:  # multi-author: the primary (first) author wins.
+            name = _author_name(item)
+            if name:
+                return name
+    return None
 
 
 # --------------------------------------------------------------------------- #

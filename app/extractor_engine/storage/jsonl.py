@@ -70,6 +70,11 @@ class JSONLStore:
         self._counts[action] += 1
         return action
 
+    def previous(self, doc_id: str) -> dict[str, object] | None:
+        """The stored record for ``doc_id`` (prior run's, before this run rewrites it)."""
+        existing = self._records.get(doc_id)
+        return existing[1] if existing is not None else None
+
     def finalize(self) -> None:
         """Write the whole corpus atomically: temp file then ``os.replace``."""
         tmp_path = self._path.with_suffix(self._path.suffix + ".tmp")

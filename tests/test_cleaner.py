@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from conftest import load_fixture
+
 from extractor_engine.engine.cleaner import clean_text
 
 
@@ -63,20 +65,43 @@ def test_plain_text_passes_through() -> None:
 def test_empty_input() -> None:
     assert clean_text("") == ""
 
-def test_trims_trailing_related_content_block() -> None:
-    """A 'recently viewed' / related block after real content is dropped, but the
-    content before it is kept."""
-    content = "This is the genuine main article body with plenty of real words here. " * 5
-    html = f"<div><p>{content}</p><p>Products you recently viewed</p><p>Book A</p><p>Book B</p></div>"
+
+# --------------------------------------------------------------------------- #
+# Structural pruning of link-dense furniture (see docs/extraction.md)
+# --------------------------------------------------------------------------- #
+def test_prunes_link_dense_low_prose_descendant() -> None:
+    """A link-dense, low-prose descendant block (a 'related' / footer strip) is
+    removed structurally — by shape, not by matching its wording."""
+    prose = "This is the genuine main article body with plenty of real words here. " * 4
+    html = (
+        f"<article><p>{prose}</p>"
+        '<div class="whatever">'
+        + "".join(f'<a href="/b{i}">Some Book Title {i}</a>' for i in range(12))
+        + "</div></article>"
+    )
     out = clean_text(html)
     assert "genuine main article body" in out
-    assert "recently viewed" not in out.lower()
-    assert "Book A" not in out
+    assert "Some Book Title" not in out  # the link-dense strip was pruned
 
 
-def test_does_not_trim_related_heading_without_enough_content() -> None:
-    """If a related heading appears before any substantial content, it is NOT
-    treated as a trailing block (the page might *be* a link list)."""
-    html = "<div><p>You may also like</p><p>Book A</p><p>Book B</p></div>"
-    out = clean_text(html)
-    assert "You may also like" in out
+def test_keeps_link_heavy_content_with_real_prose() -> None:
+    """BLOCKER: a legitimately link-heavy *content* block survives because its
+    non-link prose clears the floor (the dual gate needs BOTH conditions)."""
+    out = clean_text(load_fixture("link_heavy_content.html"))
+    # Real content with its commentary survives...
+    assert "curated list of the resources" in out
+    assert "CSS Tricks" in out
+    assert "practical guides and real-world" in out
+    assert "shaped how I write stylesheets" in out
+    # ...while the link-only article-footer strip is pruned.
+    assert "Edit this page" not in out
+    assert "Report a problem" not in out
+
+
+def test_never_prunes_the_selected_root_block() -> None:
+    """A wholly link-dense block handed in as the root is NOT pruned to nothing —
+    that case is the index classification's job upstream, not the cleaner's."""
+    html = "<nav-root>" + "".join(f'<a href="/{i}">Link {i}</a>' for i in range(20)) + "</nav-root>"
+    # Wrap in a single container so it is treated as the protected root block.
+    out = clean_text(f"<section>{html}</section>")
+    assert "Link 0" in out  # root text survives; nothing was emptied out

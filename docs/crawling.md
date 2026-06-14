@@ -39,7 +39,7 @@ Two independent bounds, with different jobs:
 
 | Bound | Flag | Default | Role |
 |---|---|---|---|
-| Max pages | `--max-pages` | 100 | Hard stop. A resource circuit-breaker: the crawl never fetches more than this many pages, full stop. |
+| Max pages | `--max-pages` | 100 | Hard stop. A resource circuit-breaker: the crawl handles at most this many pages, full stop. A page handled is a body fetched *or* a conditional-GET `304` revalidation — a `304` consumes a budget slot too, so a budget-bound warm re-crawl visits the same frontier prefix and stays reproducible. |
 | Max depth | `--max-depth` | 5 | Relevance bound. Limits how far from the seed the crawl wanders. |
 
 Max-pages is the circuit breaker; max-depth is the relevance knob. Both are
@@ -169,6 +169,17 @@ A page that returns `200` still flows through the usual `content_hash` compariso
 It is enabled by default and can be turned off (see
 [configuration.md](configuration.md)); richer conditional variants (`ETag`,
 sitemap `lastmod`) remain future work — see [future-work.md](future-work.md).
+
+Treat conditional GET as a **bandwidth optimization, not a correctness
+mechanism**: a fresh crawl is unaffected, and a re-crawl yields the same kept
+corpus, only faster. One caveat follows from it — because a `304` transfers no
+body, an unchanged page contributes no link discovery on a re-crawl. That is
+harmless here, since the listing pages that drive discovery are never kept (so
+they carry no stored `modified_at`, are always fully re-fetched, and keep
+re-seeding the frontier); but on a site where a *kept* page is the only path to
+its descendants, a re-crawl could miss a changed descendant reachable only
+through it. Caching per-URL outbound links so `304` pages still contribute
+discovery is future work; see [REVIEW.md](REVIEW.md).
 
 ## Fetcher modes: static and rendering
 

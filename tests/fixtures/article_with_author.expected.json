@@ -1,0 +1,24 @@
+{
+  "id": "41008bc0-e7ee-5789-afad-79ef48a278e0",
+  "url": "https://example.com/blog/on-writing-testable-code/",
+  "title": "On Writing Testable Code",
+  "body_text": "On Writing Testable Code\n\nTestable code is not an accident; it is the residue of a boundary drawn on\npurpose. When the part of a system that decides behavior is kept free of\ninput and output, it can be exercised exhaustively on static fixtures with\nno network and no clock, and that is what makes its tests both fast and\ntrustworthy over the long run.\n\nThe discipline is to push the messy, side-effecting work to the edges and\nleave a pure core in the middle. The core becomes a plain function: data\nin, data out, the same answer every time. Everything hard to reproduce is\nthen concentrated in one thin layer that you mock exactly once.",
+  "author": "Ada Lovelace",
+  "tags": [
+    "testing",
+    "engineering"
+  ],
+  "published_at": "2021-03-04T08:00:00Z",
+  "modified_at": null,
+  "fetched_at": "2026-06-14T12:00:00Z",
+  "content_hash": "b2a0f5448eb5f7772c16741ac0fd68bdcde026fcaaac66868009be4008728c23",
+  "signals": {
+    "word_count": 116,
+    "char_count": 637,
+    "language": "en",
+    "content_type": "article",
+    "extraction_layer": "semantic",
+    "is_mostly_code": false
+  },
+  "extra": {}
+}

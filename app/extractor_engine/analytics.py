@@ -1,9 +1,11 @@
 """Corpus analytics over a JSONL output file.
 
 Reads the deliverable back and computes simple aggregate statistics — document
-count, average length, and the language and content-type distributions. It
-doubles as a QA tool: a quick scan of the distributions surfaces a misbehaving
-run (e.g. a flood of ``index`` pages or ``und`` languages). Run as
+count, average length, and the language, content-type, and extraction-layer
+distributions **over the kept corpus** (the deliverable-state population, as
+distinct from the run telemetry in ``docs/observability.md``). It doubles as a QA
+tool: a quick scan of the distributions surfaces a misbehaving run (e.g. a flood
+of ``index`` pages, ``und`` languages, or ``crude``-layer bodies). Run as
 ``python -m extractor_engine.analytics output.jsonl``.
 """
 
@@ -32,6 +34,7 @@ def _summarize(docs: Iterable[dict[str, object]]) -> dict[str, object]:
     count = len(docs)
     languages: dict[str, int] = defaultdict(int)
     content_types: dict[str, int] = defaultdict(int)
+    extraction_layers: dict[str, int] = defaultdict(int)
     total_words = 0
     total_chars = 0
 
@@ -40,6 +43,7 @@ def _summarize(docs: Iterable[dict[str, object]]) -> dict[str, object]:
         if isinstance(signals, dict):
             languages[str(signals.get("language", "und"))] += 1
             content_types[str(signals.get("content_type", "other"))] += 1
+            extraction_layers[str(signals.get("extraction_layer", "unknown"))] += 1
             total_words += int(signals.get("word_count", 0) or 0)
             total_chars += int(signals.get("char_count", 0) or 0)
 
@@ -49,6 +53,7 @@ def _summarize(docs: Iterable[dict[str, object]]) -> dict[str, object]:
         "avg_char_count": (total_chars / count) if count else 0.0,
         "language_distribution": dict(languages),
         "content_type_distribution": dict(content_types),
+        "extraction_layer_distribution": dict(extraction_layers),
     }
 
 

@@ -97,7 +97,7 @@ returns `200` still flows through the `content_hash` comparison as normal. See
 
 ## The default JSONL store (zero-infra)
 
-The default `JSONLStore` requires no database and no object storage:
+The default `JSONLStore` requires no database and no external services:
 
 1. **Seed state from the existing file.** On start, if the output file exists, it
    is read into an in-memory map `{ id: (content_hash, doc) }`.
@@ -124,7 +124,6 @@ dependency.
 |---|---|---|
 | JSONL (default) | (always) | The deliverable; holds state in-file; zero infra. |
 | Postgres | `POSTGRES_DSN` | State store with `UPSERT` on `id` — resumable, production-style crawl state. |
-| Object storage | `MINIO_*` | Stores raw HTML for provenance. |
 
 When none of the optional variables are set, the pipeline runs as pure JSONL with
 no external services — the default path is intentionally the simplest one. See

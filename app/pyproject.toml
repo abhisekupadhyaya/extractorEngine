@@ -31,6 +31,7 @@ dev = [
     "types-beautifulsoup4",
 ]
 postgres = ["psycopg[binary]>=3.1"]
+render = ["playwright>=1.40"]
 
 [project.scripts]
 scrape_site = "extractor_engine.cli:main"

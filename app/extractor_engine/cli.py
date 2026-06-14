@@ -9,14 +9,17 @@ realizes the CLI > env > default precedence. See ``docs/configuration.md``.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import os
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 from . import __version__, analytics
 from .config import Settings
 from .crawl.crawler import Crawler
-from .crawl.fetcher import Fetcher, SeedDisallowedError
+from .crawl.fetcher import SeedDisallowedError, make_fetcher
 from .storage import build_store
 
 logger = logging.getLogger("extractor_engine")
@@ -48,6 +51,31 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=None,
         help="Bypass robots.txt (use only with authority over the site).",
+    )
+    parser.add_argument(
+        "--render",
+        dest="render",
+        action="store_true",
+        default=None,
+        help="Render JavaScript pages with a headless browser (needs the [render] extra).",
+    )
+    parser.add_argument(
+        "--render-timeout",
+        dest="render_timeout",
+        type=float,
+        help="Seconds to wait for a page to render (default 30; only with --render).",
+    )
+    parser.add_argument(
+        "--no-conditional-get",
+        dest="conditional_get",
+        action="store_false",
+        default=None,
+        help="Disable conditional GET (If-Modified-Since) on re-crawls.",
+    )
+    parser.add_argument(
+        "--stats-json",
+        dest="stats_json",
+        help="Path to write the run statistics as machine-readable JSON.",
     )
     parser.add_argument("--log-level", dest="log_level", help="Logging verbosity (default INFO).")
     return parser
@@ -81,14 +109,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         settings.max_depth,
     )
     store = build_store(settings)
-    fetcher = Fetcher(
-        user_agent=settings.user_agent,
-        delay=settings.delay,
-        timeout=settings.timeout,
-        max_retries=settings.max_retries,
-        max_page_bytes=settings.max_page_bytes,
-        ignore_robots=settings.ignore_robots,
-    )
+    fetcher = make_fetcher(settings)
 
     try:
         with fetcher:
@@ -97,8 +118,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         logger.error("%s", exc)
         return 1
 
+    if settings.stats_json:
+        _write_json_atomic(settings.stats_json, stats.to_dict())
+        logger.info("wrote run statistics to %s", settings.stats_json)
     _report(settings.output, stats.new_records)
     return 0
+
+
+def _write_json_atomic(path: str, data: object) -> None:
+    """Write ``data`` as JSON to ``path`` atomically (temp file then replace).
+
+    Mirrors the output write in docs/storage-and-idempotency.md, so a crash
+    mid-write never leaves a half-written stats file. See docs/observability.md.
+    """
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    with tmp.open("w", encoding="utf-8") as handle:
+        json.dump(data, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    os.replace(tmp, target)
 
 
 def _report(output: str, new_records: int) -> None:
@@ -113,6 +152,7 @@ def _report(output: str, new_records: int) -> None:
     if summary["document_count"]:
         logger.info("  languages: %s", _format_dist(summary["language_distribution"]))
         logger.info("  content types: %s", _format_dist(summary["content_type_distribution"]))
+        logger.info("  extraction layers: %s", _format_dist(summary["extraction_layer_distribution"]))
 
 
 def _format_dist(distribution: object) -> str:

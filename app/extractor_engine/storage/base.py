@@ -30,6 +30,14 @@ class Store(Protocol):
         """Insert, skip, or update one document; return which happened."""
         ...
 
+    def previous(self, doc_id: str) -> dict[str, object] | None:
+        """The previously stored record for ``doc_id``, or ``None`` if unseen.
+
+        Used by conditional GET to look up a page's prior ``modified_at`` before
+        re-fetching it (see ``docs/crawling.md``).
+        """
+        ...
+
     def finalize(self) -> None:
         """Flush all accumulated state to its backing medium (atomically)."""
         ...

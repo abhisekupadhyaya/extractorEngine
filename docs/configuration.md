@@ -65,7 +65,6 @@ with no external services.
 | `SCRAPER_DELAY` | `0.5` | Env-level default for `--delay`. |
 | `SCRAPER_USER_AGENT` | `scraper-bot/1.0` | Env-level default for `--user-agent`. |
 | `POSTGRES_DSN` | (unset) | When set, enables the Postgres state backend (UPSERT on `id`). |
-| `MINIO_*` | (unset) | When set, enables object storage of raw HTML for provenance. |
 
 Thresholds used by extraction and enrichment (the minimum word count, the
 link-density cutoff, the code ratio, the request timeout, and the optional

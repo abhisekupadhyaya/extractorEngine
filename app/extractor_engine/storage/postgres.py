@@ -67,6 +67,16 @@ class PostgresStore:
             )
         return StoreAction.UPDATE
 
+    def previous(self, doc_id: str) -> dict[str, object] | None:
+        """The stored ``document`` JSONB for ``doc_id``, or ``None`` if unseen."""
+        with self._conn.cursor() as cur:
+            cur.execute("SELECT document FROM documents WHERE id = %s", (doc_id,))
+            row = cur.fetchone()
+        if row is None:
+            return None
+        document = row[0]
+        return document if isinstance(document, dict) else None
+
     def finalize(self) -> None:
         """Close the connection; UPSERTs are committed eagerly (autocommit)."""
         self._conn.close()

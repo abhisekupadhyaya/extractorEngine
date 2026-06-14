@@ -16,6 +16,7 @@ venv/
 .ruff_cache/
 .coverage
 htmlcov/
+.mermaid_cache/
 
 # Local configuration
 .env

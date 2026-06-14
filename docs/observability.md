@@ -24,7 +24,10 @@ The three distributions break those totals down along three independent axes.
 
 ### 1. Extraction-layer distribution
 
-How many kept bodies came from each cascade layer:
+How many **processed pages** came from each cascade layer — every page that was
+fetched and run through the engine, kept or dropped (telemetry measures run-state;
+the analytics tool reports the same axis over the *kept* corpus only — see the
+two-instruments note below):
 
 | Layer | Meaning |
 |---|---|

@@ -147,6 +147,11 @@ class Frontier:
         self._include = re.compile(include) if include else None
         self._exclude = re.compile(exclude) if exclude else None
         self._seen: set[str] = set()
+        # URLs actually fetched-and-processed. ``_seen`` means "enqueued";
+        # ``_visited`` means "already handled". The distinction lets ``pop``
+        # discard a stale queue entry for a URL that was already processed via a
+        # redirect, instead of fetching it a second time.
+        self._visited: set[str] = set()
         # Min-heap keyed (depth, listing_rank, insertion_seq); url carried last.
         self._heap: list[tuple[int, int, int, str]] = []
         self._seq = 0
@@ -170,6 +175,19 @@ class Frontier:
         to it later.
         """
         self._seen.add(canonical_url)
+
+    def mark_visited(self, canonical_url: str) -> None:
+        """Record a canonical URL as fetched-and-processed.
+
+        Distinct from :meth:`mark_seen` (= enqueued): this lets :meth:`pop`'s
+        caller discard a stale queue entry for a URL already handled via a
+        redirect, rather than fetching it a second time.
+        """
+        self._visited.add(canonical_url)
+
+    def visited(self, canonical_url: str) -> bool:
+        """Whether ``canonical_url`` has already been fetched and processed."""
+        return canonical_url in self._visited
 
     def pop(self) -> tuple[str, int]:
         """Pop the next ``(canonical_url, depth)``: lowest depth first, content

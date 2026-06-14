@@ -52,6 +52,10 @@ class _CompositeStore:
             mirror.handle(doc)  # type: ignore[arg-type]
         return action
 
+    def previous(self, doc_id: str) -> dict[str, object] | None:
+        # Prior state is read from the primary (the deliverable), the source of truth.
+        return self._primary.previous(doc_id)
+
     def finalize(self) -> None:
         self._primary.finalize()
         for mirror in self._mirrors:

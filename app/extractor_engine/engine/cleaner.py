@@ -1,8 +1,11 @@
 """The ordered cleaning pipeline that turns a selected HTML block into body_text.
 
-The order is critical: chrome (``<nav>``/``<header>``/``<footer>``/``<aside>``)
-must be removed *before* text is grabbed, or its menu items and footer links leak
-into ``body_text``. See ``docs/extraction.md``.
+The order is critical: chrome (``<nav>``/``<header>``/``<footer>``/``<aside>`` and
+role/class-flagged UI widgets) must be removed *before* text is grabbed, or its
+menu items and notice-banner text leak into ``body_text``. Link-dense furniture
+that no chrome tag marks — recommendation strips, "related" carousels, link-list
+footers — is removed *structurally* (by the shape of a block, never by matching
+any site's wording). See ``docs/extraction.md``.
 """
 
 from __future__ import annotations
@@ -10,37 +13,33 @@ from __future__ import annotations
 import re
 
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 
 # Elements that never carry main content.
 _NON_CONTENT_TAGS = ("script", "style", "noscript")
 # Site chrome: navigation and structural furniture around the content.
 _CHROME_TAGS = ("nav", "header", "footer", "aside")
 # Non-content UI widgets flagged by ARIA role — alerts, cookie/consent dialogs,
-# banners. A generic category of furniture, matched without naming any site.
+# banners, navigation. A generic category of furniture, matched without naming
+# any site.
 _CHROME_ROLE = re.compile(r"^(?:alert|alertdialog|dialog|banner|navigation|complementary)$", re.I)
-# ...and the same widgets by conventional class names, plus related-content
-# carousels / "recently viewed" / recommendation strips (non-content furniture).
+# ...and the same generic category of UI furniture by conventional class names
+# (alert / banner / cookie / consent / promo widgets). Related-content carousels
+# are deliberately NOT matched here by name — they are removed structurally
+# below, by shape, so the rule generalizes across sites and wordings.
 _CHROME_CLASS = re.compile(
-    r"\b(?:alert|banner|cookie|consent|gdpr|promo|toast|modal|popup"
-    r"|carousel|related|recommend|recently|upsell|also-bought)\b",
+    r"\b(?:alert|banner|cookie|consent|gdpr|promo|toast|modal|popup)\b",
     re.I,
 )
 
-# Headings that introduce a trailing related-content block (carousel text that
-# survives into the library extractor's flattened output, where tag/class removal
-# can't reach it). Matched only in the latter part of the body and, when found,
-# everything from the heading onward is dropped — so main content is never cut.
-_RELATED_HEADING = re.compile(
-    r"^(?:products?\s+you\s+recently\s+viewed"
-    r"|you\s+(?:might|may)\s+also\s+like"
-    r"|related\s+(?:products?|posts?|articles?|items?|reads?)"
-    r"|recommended(?:\s+for\s+you)?"
-    r"|customers\s+also\s+(?:bought|viewed))\b",
-    re.I,
-)
-# Minimum real-content words before a related-content heading for it to be trimmed
-# (so a page that is mostly a link list up front is never cut).
-_MIN_CONTENT_WORDS = 40
+# Block-level containers considered for structural pruning of link-dense furniture.
+_PRUNE_CONTAINERS = ("div", "section", "aside", "footer", "ul", "ol", "nav", "dl")
+
+# Conservative defaults for the structural dual gate (also mirrored in
+# config.Settings so a run can tune them). A descendant block is pruned only if
+# its link density is at least this AND its non-link prose is below the floor.
+DEFAULT_PRUNE_LINK_DENSITY = 0.5
+DEFAULT_PRUNE_MIN_PROSE_WORDS = 20
 
 # Runs of spaces/tabs (but not newlines) collapse to a single space.
 _SPACES = re.compile(r"[^\S\n]+")
@@ -64,20 +63,51 @@ _BOILERPLATE_LINE = re.compile(
 )
 
 
-def clean_text(html: str) -> str:
+def link_density(element: Tag) -> float:
+    """Fraction of an element's text that lives inside ``<a>`` links.
+
+    Returns ``1.0`` for an element with no text at all, so empty blocks read as
+    fully non-content. This is the over-extraction symptom the extractor's
+    validation checks and the link-density half of the structural prune's gate.
+    """
+    total = len(element.get_text(strip=True))
+    if total == 0:
+        return 1.0
+    link_chars = sum(len(a.get_text(strip=True)) for a in element.find_all("a"))
+    return link_chars / total
+
+
+def _non_link_word_count(element: Tag) -> int:
+    """Number of whitespace-delimited words *outside* any ``<a>`` link."""
+    total = len(element.get_text(" ", strip=True).split())
+    link_words = len(" ".join(a.get_text(" ", strip=True) for a in element.find_all("a")).split())
+    return total - link_words
+
+
+def clean_text(
+    html: str,
+    *,
+    prune_link_density: float = DEFAULT_PRUNE_LINK_DENSITY,
+    prune_min_prose_words: int = DEFAULT_PRUNE_MIN_PROSE_WORDS,
+) -> str:
     """Clean a selected HTML block into plain ``body_text``.
 
     Runs the fixed pipeline from ``docs/extraction.md``: drop non-content
-    elements, drop chrome *before* grabbing text, strip remaining tags, decode
-    entities, normalize whitespace, and drop boilerplate lines. Plain text (no
-    tags) passes through unharmed, so library-extracted text can be funneled
-    through the same normalizer.
+    elements, drop chrome (tags + role/class-flagged widgets) *before* grabbing
+    text, structurally prune link-dense low-prose descendant blocks, strip
+    remaining tags, decode entities, normalize whitespace, and drop boilerplate
+    lines. Plain text (no tags) passes through unharmed, so library-extracted
+    text can be funneled through the same normalizer.
 
     Args:
         html: An HTML fragment (or already-plain text) for the selected block.
+        prune_link_density: A descendant block is a prune candidate when its link
+            density is at least this.
+        prune_min_prose_words: ...and when its non-link prose is below this floor.
 
     Returns:
-        The cleaned main prose, with chrome removed and whitespace normalized.
+        The cleaned main prose, with chrome and link-dense furniture removed and
+        whitespace normalized.
     """
     soup = BeautifulSoup(html, "lxml")
 
@@ -91,11 +121,46 @@ def clean_text(html: str) -> str:
     for element in soup.find_all(class_=_CHROME_CLASS):
         element.decompose()
 
+    # Structurally prune link-dense, low-prose descendant blocks (recommendation
+    # strips, "related"/"recently viewed" carousels, link-list footers) that no
+    # chrome tag marks — by shape, never by wording. Never the selected block.
+    _prune_link_dense_furniture(soup, prune_link_density, prune_min_prose_words)
+
     # 3 + 4. Strip remaining tags to text; BeautifulSoup decodes HTML entities.
     # A newline separator keeps block-level structure as line breaks.
     text = soup.get_text(separator="\n")
 
     return _normalize_whitespace_and_boilerplate(text)
+
+
+def _prune_link_dense_furniture(
+    soup: BeautifulSoup, max_link_density: float, min_prose_words: int
+) -> None:
+    """Remove descendant blocks that clear the dual gate, never the root block.
+
+    The selected main block is the protected root — a page that is *wholly* a link
+    list (a listing page) is handled upstream by the ``index`` classification and
+    the quality gate, not by pruning its body to nothing. Only its descendant
+    blocks are eligible. Among eligible blocks, only the **outermost** are removed
+    (decomposing a block takes its nested blocks with it).
+    """
+    body = soup.body if isinstance(soup.body, Tag) else soup
+    children = [child for child in body.children if isinstance(child, Tag)]
+    # A single wrapping element is the selected block; otherwise the body is.
+    root: Tag = children[0] if len(children) == 1 else body
+
+    candidates = [
+        tag
+        for tag in root.find_all(_PRUNE_CONTAINERS)
+        if tag is not root
+        and link_density(tag) >= max_link_density
+        and _non_link_word_count(tag) < min_prose_words
+    ]
+    outermost = [
+        tag for tag in candidates if not any(other in tag.parents for other in candidates if other is not tag)
+    ]
+    for tag in outermost:
+        tag.decompose()
 
 
 def _normalize_whitespace_and_boilerplate(text: str) -> str:
@@ -106,27 +171,6 @@ def _normalize_whitespace_and_boilerplate(text: str) -> str:
     # 6. Drop boilerplate lines (cookie banners, skip links, lone copyright).
     kept = [line for line in lines if not (line and _BOILERPLATE_LINE.match(line))]
 
-    # 7. Trim a trailing related-content block ("recently viewed" carousels etc.).
-    kept = _trim_trailing_related(kept)
-
     # Reassemble, then collapse 3+ newlines to a paragraph break and trim ends.
     collapsed = _BLANK_LINES.sub("\n\n", "\n".join(kept))
     return collapsed.strip()
-
-
-def _trim_trailing_related(lines: list[str]) -> list[str]:
-    """Drop a trailing related-content block, if present.
-
-    Looks for a related-content heading (carousel, "recently viewed", "you may
-    also like", ...) and, if found *after enough real content*, drops it and
-    everything after it. The gate is the word count preceding the heading (not its
-    line position, which a large carousel would skew), so main content is never
-    cut: a page that is mostly a link list up front is left untouched.
-    """
-    words_before = 0
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped and words_before >= _MIN_CONTENT_WORDS and _RELATED_HEADING.match(stripped):
-            return lines[:i]
-        words_before += len(stripped.split())
-    return lines

@@ -43,6 +43,10 @@ class Signals(BaseModel):
         description="ISO 639-1 language code, or 'und' when detection is not possible.",
     )
     content_type: ContentType = Field(description="Page kind (controlled vocabulary).")
+    extraction_layer: str = Field(
+        description="Which cascade layer produced body_text "
+        "(semantic/library/density/crude); a consumer confidence signal."
+    )
     is_mostly_code: bool = Field(description="Whether the page is predominantly code.")
 
 
@@ -58,6 +62,9 @@ class Document(BaseModel):
     url: str = Field(description="The canonical URL of the page (the exact string hashed for id).")
     title: str = Field(description="Page title resolved by a precedence cascade; '' if none.")
     body_text: str = Field(description="Clean main content; nav/header/sidebar/footer removed.")
+    author: str | None = Field(
+        default=None, description="Primary author from generic declared sources, or null if none declared."
+    )
     tags: list[str] = Field(default_factory=list, description="Topical labels; [] if none.")
     published_at: str | None = Field(
         default=None, description="Publication timestamp (ISO8601 UTC) or null if none exists."

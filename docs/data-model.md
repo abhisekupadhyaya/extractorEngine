@@ -30,7 +30,7 @@ level; derived quality signals are grouped under a nested `signals` block.
     "char_count":       2380,
     "language":         "en",                            // ISO 639-1, or "und"
     "content_type":     "product_page",                  // controlled vocabulary (see below)
-    "extraction_layer": "library",                       // which cascade layer produced body_text
+    "extraction_layer": "semantic",                      // which cascade layer produced body_text
     "is_mostly_code":   false
   },
   "extra": { }                                           // optional structured bag; {} if none
@@ -167,7 +167,7 @@ breaks added for readability; in the file it is a single line):
     "char_count": 1124,
     "language": "en",
     "content_type": "product_page",
-    "extraction_layer": "library",
+    "extraction_layer": "semantic",
     "is_mostly_code": false
   },
   "extra": {}
