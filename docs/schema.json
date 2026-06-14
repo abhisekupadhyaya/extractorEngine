@@ -25,6 +25,11 @@
           "$ref": "#/$defs/ContentType",
           "description": "Page kind (controlled vocabulary)."
         },
+        "extraction_layer": {
+          "description": "Which cascade layer produced body_text (semantic/library/density/crude); a consumer confidence signal.",
+          "title": "Extraction Layer",
+          "type": "string"
+        },
         "is_mostly_code": {
           "description": "Whether the page is predominantly code.",
           "title": "Is Mostly Code",
@@ -47,6 +52,7 @@
         "char_count",
         "language",
         "content_type",
+        "extraction_layer",
         "is_mostly_code"
       ],
       "title": "Signals",
@@ -55,6 +61,19 @@
   },
   "description": "One kept web page, serialized as one line of JSONL.\n\nThe shape is *hybrid*: identity and extracted-content fields live at the top\nlevel, while derived signals are grouped under :class:`Signals`. Collections\ndefault to empty (never null); genuinely optional scalars default to null.",
   "properties": {
+    "author": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Primary author from generic declared sources, or null if none declared.",
+      "title": "Author"
+    },
     "body_text": {
       "description": "Clean main content; nav/header/sidebar/footer removed.",
       "title": "Body Text",

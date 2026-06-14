@@ -19,17 +19,19 @@ level; derived quality signals are grouped under a nested `signals` block.
   "url":          "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
   "title":        "A Light in the Attic",                // resolved by a precedence cascade
   "body_text":    "clean main content, no nav/footer",   // extracted + cleaned
+  "author":       "Shel Silverstein",                    // primary author, or null if none declared
   "tags":         ["Books", "Poetry"],                   // standard web sources only; [] if none
   "published_at": "2016-06-24T00:00:00Z",                // ISO8601 UTC, or null if no date exists
   "modified_at":  "2023-02-08T21:02:32Z",                // ISO8601 UTC, or null
   "fetched_at":   "2026-06-14T12:00:00Z",                // when we scraped it (required)
   "content_hash": "sha256-hex-of-body_text",             // change detection across re-crawls
   "signals": {
-    "word_count":     412,
-    "char_count":     2380,
-    "language":       "en",                              // ISO 639-1, or "und"
-    "content_type":   "product_page",                    // controlled vocabulary (see below)
-    "is_mostly_code": false
+    "word_count":       412,
+    "char_count":       2380,
+    "language":         "en",                            // ISO 639-1, or "und"
+    "content_type":     "product_page",                  // controlled vocabulary (see below)
+    "extraction_layer": "library",                       // which cascade layer produced body_text
+    "is_mostly_code":   false
   },
   "extra": { }                                           // optional structured bag; {} if none
 }
@@ -50,6 +52,7 @@ semantic unit.
 | `url` | string | Required | The canonical URL of the page (the exact string hashed for `id`). | Provenance; re-fetch. |
 | `title` | string | Required (may be `""`) | Page title, resolved by precedence cascade. | The content itself (search, RAG, training). |
 | `body_text` | string | Required | Clean main content, with navigation, header, sidebar, and footer removed. | The content itself (search, RAG, training). |
+| `author` | string \| null | Nullable | Primary author, from generic declared sources, or `null` if none is declared. | Attribution; author-faceted filtering / ranking. |
 | `tags` | string[] | Required (may be `[]`) | Topical labels from standard web sources. | Topical filtering / ranking (e.g. "all Poetry docs"). |
 | `published_at` | string \| null | Nullable | Publication timestamp, ISO8601 UTC, or `null` if none exists. | Recency ranking. |
 | `modified_at` | string \| null | Nullable | Last-modified timestamp, ISO8601 UTC, or `null`. | Recency ranking. |
@@ -59,6 +62,7 @@ semantic unit.
 | `signals.char_count` | int ≥ 0 | Required | Character length of `body_text`. | Drop stubs; length-filter the corpus. |
 | `signals.language` | string | Required | ISO 639-1 code, or `"und"` when undetermined. | Route to the right model; filter the corpus. |
 | `signals.content_type` | enum | Required | Page kind (controlled vocabulary). | Filter corpus by page kind. |
+| `signals.extraction_layer` | string | Required | Which cascade layer produced `body_text` (`semantic` / `library` / `density` / `crude`). | Trust/confidence: filter or down-weight lower-confidence layers. |
 | `signals.is_mostly_code` | bool | Required | Whether the page is predominantly code. | Include/exclude for prose-vs-code training. |
 | `extra` | object | Required (may be `{}`) | Optional structured attributes (e.g. from JSON-LD). | Optional structured attributes (price, rating, ...). |
 
@@ -89,8 +93,9 @@ value", so consumers can rely on a consistent convention:
 - **Collections default to empty, never null.** `tags` is `[]` and `extra` is
   `{}` when nothing is found. A consumer can always iterate without a null check.
 - **Genuinely optional scalars default to null.** `published_at` and
-  `modified_at` are `null` when no such date exists. `null` here means "no date
-  exists", which is distinct from an empty string.
+  `modified_at` are `null` when no such date exists, and `author` is `null` when
+  no author is declared. `null` here means "no such value exists", which is
+  distinct from an empty string.
 - **`title` may be `""`** when even the slug-derived last resort yields nothing
   usable; it is still a required string, never null.
 - **`language` is never null**; it is `"und"` when detection is not possible
@@ -114,6 +119,32 @@ recomputed from fields that are present, it is left out. `is_mostly_code` is the
 instructive counter-example: its input (HTML `<pre>`/`<code>` density) does **not**
 survive into `body_text`, so it must be computed at extraction time and stored.
 
+## Granularity: whole-page records, consumer-side chunking
+
+Each record is a **whole page** by design. The pipeline does **not** split
+`body_text` into embedding chunks, because the right chunk size, overlap, and
+boundary policy depend on the consumer's embedding model and retrieval strategy —
+choices the pipeline cannot make correctly for every downstream system. Shipping a
+chunker would bake one set of those choices into the corpus and force every
+consumer to live with them.
+
+The whole-page record is **re-chunkable without re-crawling**: the full
+`body_text` is present, the stable `content_hash` lets a consumer detect when a
+page has changed and re-chunk only what moved, and the paragraph-preserving text
+normalization (see [extraction.md](extraction.md)) keeps the body chunk-ready —
+blank-line paragraph boundaries survive into `body_text`, so a chunker has clean
+seams to split on.
+
+The boundary, conceptually:
+
+```
+this pipeline:  crawl → extract → enrich → JSONL (whole-page records)
+the consumer:   JSONL → chunk → embed → index
+```
+
+Chunking is therefore a deliberate consumer responsibility, not an omission — see
+[future-work.md](future-work.md).
+
 ## Example record
 
 A real `books.toscrape.com` product page produces a record of this shape (line
@@ -125,6 +156,7 @@ breaks added for readability; in the file it is a single line):
   "url": "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
   "title": "A Light in the Attic",
   "body_text": "A Light in the Attic\n\nIt's hard to imagine a world without A Light in the Attic. This now-classic collection of poetry and drawings from Shel Silverstein celebrates its 20th anniversary ...",
+  "author": null,
   "tags": ["Books", "Poetry"],
   "published_at": null,
   "modified_at": "2023-02-08T21:02:32Z",
@@ -135,15 +167,18 @@ breaks added for readability; in the file it is a single line):
     "char_count": 1124,
     "language": "en",
     "content_type": "product_page",
+    "extraction_layer": "library",
     "is_mostly_code": false
   },
   "extra": {}
 }
 ```
 
-On this sandbox site `extra` is `{}` because the book pages carry no JSON-LD, and
+On this sandbox site `extra` is `{}` because the book pages carry no JSON-LD,
 `published_at` is `null` because the pages declare no standard publication date —
 only *declared* and *served* dates are accepted, never content-heuristic guesses
-(see [enrichment.md](enrichment.md)). `modified_at` is populated from the server's
-`Last-Modified` header. On a site that declares a real publication date the same
-code populates `published_at` too, with no schema change.
+(see [enrichment.md](enrichment.md)) — and `author` is `null` because the pages
+declare no author in any standard source. `modified_at` is populated from the
+server's `Last-Modified` header. On a site that declares a real publication date
+or author the same code populates `published_at` and `author` too, with no schema
+change.

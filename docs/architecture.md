@@ -75,7 +75,9 @@ extractor_engine/
     cleaner.py       clean_text() — the ordered cleaning pipeline
     enricher.py      signals, tags, dates, content_type, code detection, quality gate
   crawl/           DIRTY — network and crawl state
-    fetcher.py       HTTP, robots.txt, retry/backoff, throttle, User-Agent, Content-Type guard
+    fetcher.py       typed fetch outcomes; a common base (robots.txt, retry/backoff,
+                     throttle, User-Agent, Content-Type guard, conditional GET) with
+                     static-HTTP and headless-rendering modes
     frontier.py      BFS queue, bounds, canonicalize_url(), seen-set, scope + keep filters
     crawler.py       the orchestration loop
   storage/         persistence
@@ -84,7 +86,8 @@ extractor_engine/
     postgres.py      optional Postgres backend (UPSERT on id)
   config.py        settings (CLI > env > default)
   cli.py           the scrape_site entry point; the only place logging is configured
-  analytics.py     reads JSONL → corpus statistics (doubles as QA)
+  analytics.py     reads JSONL → corpus statistics over the kept deliverable
+                     (incl. the extraction-layer distribution); doubles as QA
 ```
 
 | Area | Responsibility | Touches the outside world? |
@@ -92,7 +95,7 @@ extractor_engine/
 | `engine/` | Parse and transform: HTML + URL in, a document object out. Knows nothing about crawling, files, or time. | No |
 | `crawl/` | Discover URLs and fetch bytes. The only network layer. | Yes |
 | `storage/` | Persist documents idempotently; select an optional backend. | Yes (disk / DB) |
-| glue | Wire flags and env into settings, run the loop, configure logging, compute analytics. | Yes |
+| glue | Wire flags and env into settings, run the loop, configure logging, emit the run summary / statistics ([observability.md](observability.md)), compute analytics. | Yes |
 
 ## The pure-core vs dirty-orchestration boundary
 
@@ -122,6 +125,12 @@ cut the interfaces at its hand-offs — keeping each interface thin.
 
 There is **no web server** in this version. The deliverable is a CLI/function, so
 an HTTP service is treated as Future Work — and is cheap to add precisely because
-the engine is already pure. There is no JavaScript rendering (static HTML only),
-no authentication handling, and no cross-source deduplication. These are
-deliberate boundaries, documented in [future-work.md](future-work.md).
+the engine is already pure. There is no authentication handling and no
+cross-source deduplication. These are deliberate boundaries, documented in
+[future-work.md](future-work.md).
+
+JavaScript rendering, by contrast, **is** supported, as an **opt-in** mode: a
+headless-browser fetcher (`--render`) produces a page's rendered DOM for
+client-rendered sites, while the static HTTP fetcher remains the default. The
+extraction engine is unchanged either way — the renderer is just another source
+of HTML. See [crawling.md](crawling.md).

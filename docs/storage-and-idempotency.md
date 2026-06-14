@@ -24,6 +24,28 @@ These are deliberately separate. A database, where used, serves as **crawl
 state** for resumability and production-mindedness — not as the deliverable. The
 deliverable is always the JSONL.
 
+## Why JSONL, not a single JSON array
+
+The deliverable is JSON Lines — one document object per line — rather than one
+big JSON array wrapping all records. The reasons are all about how a downstream
+consumer reads it:
+
+- **Streamable / bounded memory.** A reader processes one record per line and
+  never has to parse or hold the whole file at once, so memory stays flat no
+  matter how large the corpus grows. A single JSON array forces a whole-file parse
+  before the first record is available.
+- **Append- and bulk-indexer-friendly.** New records are appended as lines, and
+  the line-per-document shape is exactly what bulk indexers and dataset loaders
+  expect to ingest.
+- **Crash-resilient at line granularity.** If a file is truncated, only the last
+  partial line is lost; every complete line before it is still valid and usable. A
+  truncated JSON array is unparseable in its entirety.
+
+The trade-off, stated honestly: a JSONL file is **not itself a single valid JSON
+document**, so a consumer must use a line-oriented reader rather than handing the
+whole file to a JSON parser. For a corpus meant to be streamed into an AI workflow
+that trade is worth it.
+
 ## Idempotency: two distinct problems
 
 ### 1. Within a run — crawler dedup
@@ -50,6 +72,17 @@ Because a changed page keeps the **same `id`** (same URL → same `uuid5`) but a
 skip, changed pages replace. This is what makes re-running the tool against the
 same site produce **zero new records** when nothing has changed — the
 definition-of-done check for idempotency.
+
+### Conditional GET sits in front of this
+
+On a re-crawl the fetcher can short-circuit a page before it is ever downloaded:
+it looks up the page's previously stored `modified_at` from the existing output
+state and sends `If-Modified-Since`. A `304 Not Modified` means the body is
+unchanged and is never transferred — the page is treated as a skip without
+re-extracting or re-hashing it. This is a network optimization layered **in front
+of** the insert/skip/update decision above; it does not replace it. A page that
+returns `200` still flows through the `content_hash` comparison as normal. See
+[crawling.md](crawling.md).
 
 ## Semantics worth noting
 

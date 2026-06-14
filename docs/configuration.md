@@ -41,6 +41,10 @@ scrape_site --start-url=https://books.toscrape.com/ \
 | `--exclude` | (none) | Path regex; URLs whose path matches are excluded. |
 | `--user-agent` | `scraper-bot/1.0` | User-Agent string sent with every request. |
 | `--ignore-robots` | `false` | Escape hatch to bypass `robots.txt` (use only with authority over the site). |
+| `--render` | `false` | Use the headless-browser rendering fetcher instead of the static HTTP fetcher, for client-rendered sites. Off by default. |
+| `--render-timeout` | `30` | Seconds to wait for the page to render before giving up (only with `--render`). |
+| `--no-conditional-get` | `false` | Disable conditional GET (`If-Modified-Since`) on re-crawls. Conditional GET is on by default. |
+| `--stats-json` | (none) | Path to write the run statistics as machine-readable JSON, in addition to the printed summary. |
 | `--log-level` | `INFO` | Logging verbosity. Skips are logged at `WARNING`. |
 
 Exact flag names and any additional thresholds are parsed by the CLI's argument
@@ -76,5 +80,10 @@ controls.
   through environment variables.
 - **An `.env` file is supported** for local development; values in it follow the
   same precedence (below CLI flags, above built-in defaults).
+- **Rendering is an optional extra.** `--render` requires the headless-browser
+  dependency, shipped as an optional install extra and a separate container image;
+  the default static path needs none of it. See [crawling.md](crawling.md).
+- **`--stats-json`** writes the same statistics shown in the printed run summary;
+  see [observability.md](observability.md).
 - See [storage-and-idempotency.md](storage-and-idempotency.md) for how the
   optional backends behave once enabled.

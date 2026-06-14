@@ -3,25 +3,25 @@
 This document describes how the pipeline would evolve toward a continuously
 operated production collector. Everything here is **out of scope for this
 version** and is recorded as a deliberate boundary, not an omission. The current
-version is a single-pass, single-site, static-HTML scraper that produces a clean
-JSONL collection; the items below are the natural next increments, most of which
-are cheap precisely because the engine is already a pure library with a single
-data contract.
+version is a single-pass, single-site scraper that produces a clean JSONL
+collection; the items below are the natural next increments, most of which are
+cheap precisely because the engine is already a pure library with a single data
+contract.
 
-## Incremental re-crawling
+## Richer incremental re-crawling
 
-Today a re-run fetches every page and decides insert/skip/update from the
-`content_hash` after extraction. A production collector would avoid downloading
-unchanged pages at all:
+Conditional GET via `If-Modified-Since` is already part of normal operation (see
+[crawling.md](crawling.md)) and sits in front of the insert/skip/update logic in
+[storage-and-idempotency.md](storage-and-idempotency.md). Two richer variants
+remain future work:
 
-- **Conditional GET** using `If-Modified-Since` / `ETag`, so the origin returns
-  `304 Not Modified` and the body is never transferred.
+- **`ETag` validators** alongside `If-Modified-Since`, for origins that serve
+  entity tags but not (or in addition to) a `Last-Modified` date.
 - **Sitemap `lastmod`** to discover what changed since the last crawl and visit
-  only those URLs.
+  only those URLs, rather than re-walking the whole frontier.
 
-These sit *in front of* the existing insert/skip/update logic; they make re-crawls
-cheaper, they do not replace the idempotency model in
-[storage-and-idempotency.md](storage-and-idempotency.md).
+Like conditional GET, these sit *in front of* the existing insert/skip/update
+logic; they make re-crawls cheaper, they do not replace the idempotency model.
 
 ## Scheduling and monitoring
 
@@ -61,33 +61,44 @@ the clean library boundary is what keeps it cheap to add. See
 
 ## Broader content coverage
 
-- **JavaScript-rendered / single-page sites.** This version handles static HTML
-  only. Sites that render content client-side would need a headless browser to
-  produce the HTML before extraction; the engine downstream would be unchanged.
+- **Pure client-side-routing single-page apps.** Client-*rendered* sites are
+  already handled by the opt-in rendering fetcher (see [crawling.md](crawling.md)),
+  which returns the rendered DOM with its links intact. Sites built on pure
+  client-side *routing* — where navigation produces no crawlable `<a href>` links
+  at all — are still out of reach, because the frontier has nothing to discover.
+  Supporting them would require driving the app's in-page navigation rather than
+  following links.
 - **Authentication-walled content.** Not handled today; would require credential
   and session management in the fetcher.
-- **Richer dates and structured data.** `published_at`, `modified_at`, and
-  `extra` are extracted from standard machine-readable sources but are empty on
+- **Richer dates and structured data.** `published_at`, `modified_at`, `author`,
+  and `extra` are extracted from standard machine-readable sources but are empty on
   sites (like the current sandbox) that do not publish them. On date- and
   structured-data-rich sites the same code populates them; no schema change is
   needed.
-- **Main-content-node extraction + chunk-level cleaning.** The extractor currently
-  consumes the extraction library's *flattened text*, so cleanup that needs DOM
-  structure (e.g. removing a related-content carousel by element, or separating a
-  teaser that is glued mid-word onto a duplicated full description) can't reach it
-  — heading/word-gated heuristics handle the common cases, but some intra-block
-  duplication survives. Extracting the main-content **node** (HTML), then applying
-  the structural cleaner, and de-duplicating at chunk boundaries downstream, is the
-  robust fix.
+- **Multiple co-authors.** The `author` field records a single **primary** author
+  (the first declared). Pages with several co-authors are common, and capturing the
+  full list would mean promoting `author` to an array — a schema change deferred
+  until a consumer needs it. See [enrichment.md](enrichment.md).
 
-## Summary of deliberate v1 boundaries
+## Chunking
+
+Records are whole-page by design; splitting `body_text` into embedding chunks is
+left to the consumer, because the right chunk size, overlap, and boundary policy
+depend on the consumer's embedding model and retrieval strategy. This is a
+deliberate boundary, covered in [data-model.md](data-model.md) — the whole-page
+record plus the stable `content_hash` is re-chunkable without re-crawling.
+
+## Summary of deliberate boundaries
 
 | Boundary | Status |
 |---|---|
-| JavaScript-rendered / SPA sites | Static HTML only |
+| Client-*rendered* sites | Handled via opt-in `--render` |
+| Pure client-side-*routing* SPAs (no crawlable links) | Not handled |
 | Authentication-walled content | Not handled |
-| Cross-source content deduplication | URL dedup only |
-| Intra-page duplicated text (teaser + full) | Heuristically trimmed; some residue |
+| Cross-URL / cross-source content deduplication | URL dedup only |
+| Richer incremental re-crawl (`ETag`, sitemap `lastmod`) | `If-Modified-Since` only |
+| Multiple co-authors | Primary author only |
+| Embedding chunking | Left to the consumer |
 | Distributed / scheduled crawling | Single-pass, single worker |
 | Network service surface | CLI only; adapter is Future Work |
 | Populated dates on date-poor sites | `null` where no date exists |

@@ -33,7 +33,7 @@ distrust, so robustness is worth more than a perfect fit to one layout.
 
 **Alternatives considered.** Hardcoded per-site CSS selectors — rejected as
 non-generalizing and brittle to markup changes. A hybrid (generic with
-per-site overrides) — rejected as premature for a single-site v1 and a slope back
+per-site overrides) — rejected as premature for a single-site scraper and a slope back
 toward site-specificity.
 
 ---
@@ -188,7 +188,7 @@ poisons downstream embeddings.
 
 ---
 
-## 7. Pure-library engine plus CLI, no service in v1
+## 7. Pure-library engine plus CLI, no web service
 
 **Context.** The deliverable is a command-line tool. A network service over the
 engine is tempting as a "production" surface.
@@ -207,7 +207,106 @@ boundary is drawn now, and the surface is deferred. Mechanics are in
 [architecture.md](architecture.md); the adapter is in
 [future-work.md](future-work.md).
 
-**Alternatives considered.** Shipping a service in v1 — rejected as gold-plating
+**Alternatives considered.** Shipping a web service — rejected as gold-plating
 beyond the required deliverable. Coupling extraction logic into the CLI directly
 (no library boundary) — rejected because it would make the engine hard to test and
 hard to reuse behind a future service.
+
+---
+
+## 8. Structure-based content cleaning over keyword matching
+
+**Context.** Navigational furniture is not confined to chrome tags. Recommendation
+strips, "related" and "recently viewed" carousels, and link-list footers appear as
+ordinary descendant containers *inside* the selected main block, where dropping
+`<nav>` / `<aside>` by element does not reach them. The cleaner must remove this
+furniture without poisoning `body_text`.
+
+**Decision.** Prune these blocks **structurally**, by their shape, using a **dual
+gate**: a descendant block is removed only when its link density is high **and**
+its non-link prose falls below a floor. Do not match heading phrases or class
+keywords.
+
+**Rationale.** A block that is mostly anchor text with almost no prose is
+furniture regardless of language or wording, so a structural test generalizes
+across sites — the same robustness argument that drives generic extraction in
+decision 1. Keyword matching ("you may also like", "related products") would catch
+only the exact phrases and languages it was written for and would silently miss
+every variant, reintroducing the site-specificity the design rejects elsewhere.
+The dual gate is what makes the rule safe: requiring *both* high link density and
+low prose means a legitimately link-heavy *content* section (a curated list of
+links with real commentary) is kept, because its prose clears the floor. Only
+**descendant** blocks are eligible; a page that is wholly a link list is handled
+upstream by the `index` classification and quality gate, never by pruning the body
+to nothing. Mechanics are in [extraction.md](extraction.md).
+
+**Alternatives considered.** Heading/class keyword matching — rejected as
+non-generalizing and language-bound. A single link-density gate without the prose
+floor — rejected because it would over-prune genuinely link-rich content sections.
+Leaving in-block furniture in `body_text` — rejected because its navigational text
+poisons downstream embeddings, the same harm the quality gate guards against.
+
+---
+
+## 9. The extraction layer as a consumer trust signal
+
+**Context.** The extractor selects `body_text` through a validate-then-cascade of
+four layers (semantic, library, density, crude). Which layer won is meaningful: a
+body recovered by the crude floor is less trustworthy than one the semantic layer
+produced. That information exists at extraction time and would otherwise be thrown
+away.
+
+**Decision.** Record the **winning cascade layer** as `signals.extraction_layer`
+(one of `semantic` / `library` / `density` / `crude`) — the raw layer name, not a
+derived score — and treat it as a first-class consumer signal.
+
+**Rationale.** The consumer cannot otherwise tell which records to distrust, and
+the asymmetry of dirty `body_text` (decision 1) means a confidence signal has real
+value: a consumer can filter out or down-weight bodies from the lower-confidence
+layers when building a corpus. Storing the **raw layer name** rather than a number
+keeps the basis for trust transparent — the consumer sees *why* a record ranks
+lower, not just that it does — and avoids inventing a `quality_score` that decision
+4 deliberately rejected as actionless. The signal also doubles as an operational
+health metric: a run weighted toward `density` and `crude` is an early sign that a
+site's markup has drifted (see [observability.md](observability.md)). Mechanics are
+in [extraction.md](extraction.md) and [data-model.md](data-model.md).
+
+**Alternatives considered.** Omitting the signal — rejected because the
+information is free at extraction time and the consumer has a concrete use for it.
+Collapsing the layer into a numeric confidence score — rejected as less
+transparent and as the kind of actionless derived field decision 4 excludes.
+Logging the layer instead of recording it on the record — rejected because a
+consumer reading the JSONL cannot see logs, and the engine is pure and does not log
+anyway.
+
+---
+
+## 10. Opt-in rendering behind an unchanged pure engine
+
+**Context.** Some sites inject their content with client-side JavaScript, so a
+plain HTTP `GET` returns a near-empty shell. Supporting them requires a headless
+browser — a heavy, slow dependency that most crawls do not need.
+
+**Decision.** Add a headless-browser **rendering fetcher** as an **opt-in** mode
+(`--render`), off by default, behind a fetcher base shared with the static
+fetcher. The renderer returns rendered HTML; the **extraction engine is
+unchanged** — the renderer is just another source of HTML.
+
+**Rationale.** Treating the renderer as "another HTML source" is what keeps the
+cost contained. Because the pure engine already takes HTML and a URL and knows
+nothing about how the bytes were obtained, a rendering fetcher slots in without
+touching extraction or enrichment — the same pure/dirty boundary that makes the
+service adapter cheap (decision 7). Keeping it **off by default** means the common
+case pays nothing: no headless-browser dependency, no render latency. It ships as
+an optional install extra and a separate container image, so the default install
+stays light. The honest scope limit is stated rather than hidden: rendering handles
+client-*rendered content* where links are still real anchors, but pure client-side
+*routing* (no crawlable links) remains future work. Mechanics are in
+[crawling.md](crawling.md).
+
+**Alternatives considered.** Rendering every page by default — rejected because it
+imposes a heavy dependency and large latency on the majority of crawls that do not
+need it. Building a second extraction path for rendered pages — rejected because
+the engine consumes HTML regardless of origin, so no second path is warranted.
+Skipping rendering entirely and leaving JS sites as future work — rejected because
+client-rendered content is common enough to be worth a bounded, opt-in mode.

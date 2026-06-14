@@ -66,6 +66,17 @@ because its input — the `<pre>`/`<code>` markup — does not survive into the
 cleaned `body_text` and could not be recomputed later. The signal lets a consumer
 include or exclude a page for prose-versus-code training.
 
+## Extraction layer (`extraction_layer`)
+
+`signals.extraction_layer` records **which cascade layer produced `body_text`** —
+`semantic`, `library`, `density`, or `crude`. The value is set by the extractor
+(see [extraction.md](extraction.md)) and carried straight onto the signals block;
+enrichment does not recompute it. It is a **consumer confidence signal**: a body
+from the `semantic` or `library` layer is higher-confidence than one from the
+`density` heuristic or the `crude` floor, so a consumer can filter or down-weight
+on it. The raw layer name is stored rather than a derived score, so the basis for
+trust stays transparent.
+
 ## Tags
 
 `tags` are gathered from **standard web sources only** — never site-specific
@@ -107,6 +118,30 @@ On the sandbox `books.toscrape.com` this means `published_at` is `null` — the
 pages declare no standard publication date — while `modified_at` is populated from
 the `Last-Modified` response header. The same code populates `published_at` on a
 site that declares a real one, with no schema change either way.
+
+## Author
+
+`author` is a **top-level, nullable** field — metadata about the page, parallel to
+`published_at` / `modified_at`, not a derived signal — so it lives at the top
+level of the record and not under `signals` (see [data-model.md](data-model.md)).
+
+It is sourced by a **generic cascade**, most-authoritative first, and the first
+source that yields a name wins:
+
+1. JSON-LD `author` — the `name` of a `Person` or `Organization` (the first entry
+   if `author` is a list).
+2. OpenGraph `article:author`.
+3. `<meta name="author">`.
+4. The extraction library's parsed author.
+
+As with tags and dates, only **standard, generic** sources are read — never
+site-specific selectors — so the same logic generalizes across sites. When no
+source declares an author, `author` is `null` (meaning "no author declared",
+distinct from an empty string).
+
+For a multi-author page only the **primary (first) author** is recorded;
+capturing all co-authors is noted as future work (see
+[future-work.md](future-work.md)).
 
 ## The `extra` bag
 

@@ -3,10 +3,11 @@
 This document describes how the pipeline discovers pages: the breadth-first
 frontier and its bounds, the URL canonicalization rule that underpins identity
 and deduplication, the two filters that decide what to crawl and what to keep,
-the politeness policy (including `robots.txt`), and the error-handling taxonomy
-that guarantees one bad page never crashes a run. Crawling is part of the dirty
-orchestration layer; it touches the network and crawl state, and it hands raw
-HTML to the pure extraction engine.
+the politeness policy (including `robots.txt`), the typed fetch outcomes and
+error-handling taxonomy that guarantee one bad page never crashes a run,
+conditional GET on re-crawls, and the static and rendering fetcher modes. Crawling
+is part of the dirty orchestration layer; it touches the network and crawl state,
+and it hands raw HTML to the pure extraction engine.
 
 ## Frontier: breadth-first from the seed
 
@@ -152,18 +153,84 @@ deliberately: correct robots handling is part of being production-minded.
 - **Optional response-size cap** (`max_page_bytes`, ~5MB) streams the response
   and aborts with a log entry if the page is implausibly large.
 
+## Conditional GET
+
+On a re-crawl, the fetcher avoids downloading pages that have not changed. Before
+requesting a URL it looks up that page's previously stored `modified_at` from the
+existing output state and, when one exists, sends an `If-Modified-Since` header
+derived from it. If the origin replies `304 Not Modified`, the page is unchanged:
+its body is never transferred, and the fetch resolves to a `not_modified` skip
+(an intentional skip, not an error — see [observability.md](observability.md)).
+
+Conditional GET sits **in front of** the insert/skip/update idempotency logic in
+[storage-and-idempotency.md](storage-and-idempotency.md); it makes a re-crawl
+cheaper by not fetching unchanged bodies, but it does **not** replace that logic.
+A page that returns `200` still flows through the usual `content_hash` comparison.
+It is enabled by default and can be turned off (see
+[configuration.md](configuration.md)); richer conditional variants (`ETag`,
+sitemap `lastmod`) remain future work — see [future-work.md](future-work.md).
+
+## Fetcher modes: static and rendering
+
+The fetcher comes in two forms behind a common base. The base owns all the shared
+behavior described above — politeness delay, `robots.txt`, retry and backoff,
+throttle, the typed-reason taxonomy, conditional GET. The two concrete fetchers
+differ **only in how they load a URL**:
+
+- **Static HTTP fetcher (default).** Issues an HTTP `GET` and returns the response
+  bytes. This is the default mode and needs no extra dependencies.
+- **Rendering fetcher (opt-in).** Drives a headless browser and returns the page's
+  **rendered DOM** as HTML, for sites whose content is injected by client-side
+  JavaScript. Selected with `--render` (see [configuration.md](configuration.md)),
+  it ships as an optional install extra and a separate container image, and is
+  bounded by a render timeout (`--render-timeout`).
+
+The **extraction engine is unchanged by the choice of fetcher**: the renderer
+simply produces HTML the same way the static fetcher does, and the pure engine
+extracts from that HTML without knowing which fetcher loaded it. This is the same
+pure-core / dirty-orchestration boundary the rest of the system follows.
+
+**Scope.** Rendering handles client-**rendered content** — pages where the markup
+is built by JavaScript but the links are still real `<a href>` anchors the crawler
+can discover. Sites built on pure client-side **routing**, where navigation
+produces no crawlable links at all, are not covered and remain future work — see
+[future-work.md](future-work.md).
+
+## Typed fetch outcomes
+
+The fetcher does not return a bare page-or-`None`. Every fetch resolves to one of
+two outcomes: a **fetched result** (the bytes plus response metadata), or a
+**typed skip carrying a reason**. The reason is a value drawn from a closed set:
+
+| Reason | Kind |
+|---|---|
+| `robots_disallowed` | Intentional skip |
+| `non_html` | Intentional skip |
+| `oversized` | Intentional skip |
+| `not_modified` | Intentional skip |
+| `timeout` | Error |
+| `connection_error` | Error |
+| `http_4xx` | Error |
+| `http_5xx` | Error |
+| `rate_limited` | Error |
+
+Carrying the reason as a typed value rather than a log line is what lets the
+telemetry layer count outcomes precisely and keep **genuine errors** separate from
+**intentional skips** — see [observability.md](observability.md). One bad page
+never crashes the run: the reason flows up as data and the loop continues.
+
 ## Error-handling taxonomy
 
-Errors are handled by a **taxonomy**, not a single bare `try/except`. The guiding
-invariant is that one bad page never crashes the run, and every skip is logged
-with the URL and the reason.
+The error reasons above are produced by a **taxonomy**, not a single bare
+`try/except`. The guiding invariant is that one bad page never crashes the run,
+and every skip is also logged with the URL and the reason.
 
-| Condition | Action |
-|---|---|
-| Timeout / connection error | Retry with backoff, then skip and log. |
-| `429 Too Many Requests` | Back off and honor the `Retry-After` header. |
-| `5xx` server error | Retry with backoff, then skip and log. |
-| `4xx` / `404` | Do **not** retry; skip and log immediately. |
+| Condition | Action | Reason |
+|---|---|---|
+| Timeout / connection error | Retry with backoff, then skip. | `timeout` / `connection_error` |
+| `429 Too Many Requests` | Back off and honor the `Retry-After` header, then skip. | `rate_limited` |
+| `5xx` server error | Retry with backoff, then skip. | `http_5xx` |
+| `4xx` / `404` | Do **not** retry; skip immediately. | `http_4xx` |
 
 The distinction between `5xx` (transient — worth a retry) and `4xx` (the resource
 is genuinely absent or forbidden — retrying is wasted effort) is the point of the

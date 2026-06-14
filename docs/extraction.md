@@ -74,6 +74,20 @@ A layer's output is accepted only if it clears both checks. If no layer's output
 passes, the engine returns layer 4 (the crude fallback) so that a result is
 always produced. The thresholds are configurable.
 
+## Recording the winning layer
+
+The engine records **which cascade layer produced `body_text`** on the result it
+returns — `semantic`, `library`, `density`, or `crude`. This surfaces in the
+record as `signals.extraction_layer` (see [data-model.md](data-model.md)) and is
+a **consumer confidence signal**, not a debug breadcrumb: a body that came from
+the `semantic` layer or the bought library is higher-confidence than one the
+`density` heuristic or the `crude` floor produced, so a consumer can filter or
+down-weight on it. The raw layer name is recorded rather than a derived score, so
+the reasoning stays transparent — the consumer sees *why* a record is more or less
+trustworthy, not just a number. Recording it is **data on the result object**; the
+engine itself never logs (see [observability.md](observability.md) for how the
+dirty layer aggregates it).
+
 ## The cleaning pipeline
 
 Once a main block is selected, it is cleaned in a **fixed order** — the order
@@ -93,26 +107,48 @@ leaks into `body_text`.
    consecutive newlines down to two; trim each line.
 6. **Drop boilerplate lines:** cookie banners, "skip to content" links, lone
    copyright lines.
-7. **Trim a trailing related-content block:** a "recently viewed" / "you may also
-   like" / "related products" heading that appears *after enough real content*
-   (a word-count gate, not a line position, so a large carousel can't skew it)
-   drops that heading and everything after it. This catches related-content
-   carousels that survive into the extraction library's flattened text, where
-   tag/class removal can't reach them. The word gate guarantees main content is
-   never cut.
 
 The result is `body_text`: the page's main prose, with navigation, header,
-sidebar, footer, and trailing related-content widgets removed, entities decoded,
-and whitespace normalized.
+sidebar, footer, and link-dense furniture removed, entities decoded, and
+whitespace normalized.
 
-**Known limitation.** When a source page embeds the *same* description twice in
-one block — e.g. a truncated teaser immediately followed by the full text, with
-the teaser cut mid-word so it glues onto the full copy — that intra-block
-duplication can survive. A safe, generic de-duplicator cannot cleanly separate
-the glued copies, and a site-specific rule would violate the generic-extraction
-principle. The production fix is to extract the main-content *node* (so structural
-de-duplication applies) or to de-duplicate at chunk boundaries downstream — see
-[future-work.md](future-work.md).
+## Structural pruning of link-dense furniture
+
+Step 2 above drops whole categories of chrome (`<nav>`, `<header>`, `<footer>`,
+`<aside>`) by element. But navigational furniture also appears *inside* the
+selected main block as ordinary descendant containers — recommendation strips,
+"related" and "recently viewed" carousels, link-list footers — that no chrome tag
+marks. The cleaner prunes these **structurally**, not by matching wording.
+
+A descendant block is removed when it clears a **dual gate**:
+
+| Gate | Condition |
+|---|---|
+| **Link density** | The block's text is dominated by anchor text — links make up a high share of its content. |
+| **Low prose** | The block's non-link prose falls below a floor — there is little real text outside the links. |
+
+Both conditions must hold. The mechanism is **generic**: it keys on the shape of
+a block (mostly links, little prose), so it generalizes across sites and
+languages, where matching specific heading phrases ("you may also like") would
+catch only the sites and wordings it was written for.
+
+The guards are deliberate:
+
+- **Only descendant blocks are pruned, never the selected main block itself.** A
+  page that is *wholly* a link list — a category or listing page — is handled
+  upstream by the `index` classification and the quality gate (see
+  [enrichment.md](enrichment.md)), not by pruning the body down to nothing.
+- **The dual gate prevents removing a legitimately link-heavy content section.**
+  Requiring *both* high link density *and* low prose means a content block that
+  happens to carry many links (a curated link list with real commentary) is
+  kept, because its prose clears the floor.
+
+**Known limitation.** An unusually link-heavy *content* block — one that is both
+link-dominated and genuinely thin on prose — could in principle be over-pruned.
+The thresholds are tuned conservatively to favor keeping content, and the
+behavior is covered by tests, including a preserve-this-content case that asserts
+a legitimate link-rich section survives. The residual risk is documented honestly
+rather than hidden.
 
 ## Title resolution
 

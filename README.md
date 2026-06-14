@@ -29,6 +29,13 @@ pip install -e "./app[dev]"
 make -C app test
 ```
 
+To crawl JavaScript-rendered sites, install the rendering extra and pass `--render`:
+
+```bash
+pip install -e "./app[render]"
+scrape_site --start-url=https://quotes.toscrape.com/js/ --render --output=output.jsonl
+```
+
 ## What it produces
 
 One **document object** per kept page, serialized as one line of JSONL:
@@ -42,6 +49,7 @@ One **document object** per kept page, serialized as one line of JSONL:
   "tags": ["Books", "Poetry"],
   "published_at": null,
   "modified_at": "2023-02-08T21:02:32Z",
+  "author": null,
   "fetched_at": "2026-06-14T12:00:00Z",
   "content_hash": "9b74c9897bac770ffc029102a200c5de...",
   "signals": {
@@ -49,7 +57,8 @@ One **document object** per kept page, serialized as one line of JSONL:
     "char_count": 1124,
     "language": "en",
     "content_type": "product_page",
-    "is_mostly_code": false
+    "is_mostly_code": false,
+    "extraction_layer": "library"
   },
   "extra": {}
 }
@@ -115,9 +124,12 @@ network. See [docs/architecture.md](docs/architecture.md).
 Configured by CLI flags and environment variables, resolved **CLI flag > env var
 > default**. Key flags: `--start-url` (required), `--max-pages` (100),
 `--max-depth` (5), `--output` (`output.jsonl`), `--delay` (0.5s), `--include` /
-`--exclude` (path regex), `--user-agent`, `--ignore-robots`. The default run
-needs **zero infrastructure**; optional Postgres / object-storage backends
-activate only when their environment variables are set. Full reference:
+`--exclude` (path regex), `--user-agent`, `--ignore-robots`, `--stats-json` (write
+run statistics as JSON), `--render` (render JavaScript pages; needs the `[render]`
+extra, off by default), `--render-timeout`, and `--no-conditional-get` (re-crawls
+skip `If-Modified-Since` and always re-download). The default run needs **zero
+infrastructure**; optional Postgres / object-storage backends activate only when
+their environment variables are set. Full reference:
 [docs/configuration.md](docs/configuration.md).
 
 ## Site chosen and why
@@ -145,6 +157,12 @@ generalizes to other sites; books.toscrape is the test bed, not a hardcoded targ
 - **Two filters** — *scope* (what to crawl) is separate from *keep* (what to
   emit), so listing pages can be followed for links without polluting the corpus.
   [docs/crawling.md](docs/crawling.md)
+- **Self-reporting runs** — every run summarizes its extraction-layer mix, drop
+  reasons, and fetch outcomes, and each record carries the extraction layer it came
+  from as a confidence signal. [docs/observability.md](docs/observability.md)
+- **Optional JavaScript rendering** — an opt-in `--render` mode handles
+  client-rendered pages; the pure engine is unchanged, since the renderer is just
+  another source of HTML. [docs/crawling.md](docs/crawling.md)
 
 The full rationale for each critical decision — context, alternatives, and
 trade-offs — is in [docs/design-decisions.md](docs/design-decisions.md).
@@ -160,9 +178,10 @@ trade-offs — is in [docs/design-decisions.md](docs/design-decisions.md).
 | [enrichment.md](docs/enrichment.md) | Signals, tags, dates, content-type, quality gate |
 | [storage-and-idempotency.md](docs/storage-and-idempotency.md) | Output format and idempotency |
 | [configuration.md](docs/configuration.md) | Flags, env vars, precedence |
+| [observability.md](docs/observability.md) | Run telemetry: the summary, `--stats-json`, and the layer / drop / fetch-outcome distributions |
 | [testing.md](docs/testing.md) | Test strategy |
 | [design-decisions.md](docs/design-decisions.md) | The key design decisions and why |
-| [future-work.md](docs/future-work.md) | Production evolution and deliberate v1 boundaries |
+| [future-work.md](docs/future-work.md) | Production evolution and deliberate boundaries |
 
 ## Testing
 
