@@ -71,6 +71,14 @@ the clean library boundary is what keeps it cheap to add. See
   sites (like the current sandbox) that do not publish them. On date- and
   structured-data-rich sites the same code populates them; no schema change is
   needed.
+- **Main-content-node extraction + chunk-level cleaning.** The extractor currently
+  consumes the extraction library's *flattened text*, so cleanup that needs DOM
+  structure (e.g. removing a related-content carousel by element, or separating a
+  teaser that is glued mid-word onto a duplicated full description) can't reach it
+  — heading/word-gated heuristics handle the common cases, but some intra-block
+  duplication survives. Extracting the main-content **node** (HTML), then applying
+  the structural cleaner, and de-duplicating at chunk boundaries downstream, is the
+  robust fix.
 
 ## Summary of deliberate v1 boundaries
 
@@ -79,6 +87,7 @@ the clean library boundary is what keeps it cheap to add. See
 | JavaScript-rendered / SPA sites | Static HTML only |
 | Authentication-walled content | Not handled |
 | Cross-source content deduplication | URL dedup only |
+| Intra-page duplicated text (teaser + full) | Heuristically trimmed; some residue |
 | Distributed / scheduled crawling | Single-pass, single worker |
 | Network service surface | CLI only; adapter is Future Work |
 | Populated dates on date-poor sites | `null` where no date exists |

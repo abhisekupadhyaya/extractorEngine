@@ -1,0 +1,144 @@
+{
+  "$defs": {
+    "ContentType": {
+      "description": "Closed vocabulary for ``signals.content_type``.\n\nA closed enum means a consumer's filter never silently misses a typo'd or\nunexpected variant; an unfamiliar page is classified as :attr:`OTHER` rather\nthan inventing a new label. See ``docs/data-model.md``.",
+      "enum": [
+        "product_page",
+        "doc_page",
+        "article",
+        "index",
+        "other"
+      ],
+      "title": "ContentType",
+      "type": "string"
+    },
+    "Signals": {
+      "description": "Derived quality signals, grouped so they can be versioned as one unit.\n\nNesting these under ``signals`` is a contract choice, not a performance one:\neach JSONL record loads whole, so the grouping simply keeps identity fields\nseparate from the derived \"filter panel\".",
+      "properties": {
+        "char_count": {
+          "description": "Character length of body_text.",
+          "minimum": 0,
+          "title": "Char Count",
+          "type": "integer"
+        },
+        "content_type": {
+          "$ref": "#/$defs/ContentType",
+          "description": "Page kind (controlled vocabulary)."
+        },
+        "is_mostly_code": {
+          "description": "Whether the page is predominantly code.",
+          "title": "Is Mostly Code",
+          "type": "boolean"
+        },
+        "language": {
+          "description": "ISO 639-1 language code, or 'und' when detection is not possible.",
+          "title": "Language",
+          "type": "string"
+        },
+        "word_count": {
+          "description": "Whitespace-delimited token count of body_text.",
+          "minimum": 0,
+          "title": "Word Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "word_count",
+        "char_count",
+        "language",
+        "content_type",
+        "is_mostly_code"
+      ],
+      "title": "Signals",
+      "type": "object"
+    }
+  },
+  "description": "One kept web page, serialized as one line of JSONL.\n\nThe shape is *hybrid*: identity and extracted-content fields live at the top\nlevel, while derived signals are grouped under :class:`Signals`. Collections\ndefault to empty (never null); genuinely optional scalars default to null.",
+  "properties": {
+    "body_text": {
+      "description": "Clean main content; nav/header/sidebar/footer removed.",
+      "title": "Body Text",
+      "type": "string"
+    },
+    "content_hash": {
+      "description": "sha256 hex of body_text; drives change detection.",
+      "title": "Content Hash",
+      "type": "string"
+    },
+    "extra": {
+      "additionalProperties": true,
+      "description": "Optional structured attributes (e.g. from JSON-LD); {} if none.",
+      "title": "Extra",
+      "type": "object"
+    },
+    "fetched_at": {
+      "description": "When the current version was captured; tz-aware UTC ISO8601.",
+      "title": "Fetched At",
+      "type": "string"
+    },
+    "id": {
+      "description": "uuid5 of the canonical URL; stable identity / upsert key.",
+      "title": "Id",
+      "type": "string"
+    },
+    "modified_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Last-modified timestamp (ISO8601 UTC) or null.",
+      "title": "Modified At"
+    },
+    "published_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Publication timestamp (ISO8601 UTC) or null if none exists.",
+      "title": "Published At"
+    },
+    "signals": {
+      "$ref": "#/$defs/Signals",
+      "description": "Derived quality signals (see Signals)."
+    },
+    "tags": {
+      "description": "Topical labels; [] if none.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Tags",
+      "type": "array"
+    },
+    "title": {
+      "description": "Page title resolved by a precedence cascade; '' if none.",
+      "title": "Title",
+      "type": "string"
+    },
+    "url": {
+      "description": "The canonical URL of the page (the exact string hashed for id).",
+      "title": "Url",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "url",
+    "title",
+    "body_text",
+    "fetched_at",
+    "content_hash",
+    "signals"
+  ],
+  "title": "Document",
+  "type": "object"
+}

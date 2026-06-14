@@ -60,7 +60,7 @@ returns nothing for a page that has any body at all.
 
 The cascade is driven by **validation**, not by exceptions. The engine does not
 "try until something stops throwing"; it **validates each layer's output before
-trusting it**, and falls through on failure. This validation is the load-bearing
+trusting it**, and falls through on failure. This validation is the critical
 robustness contribution.
 
 The validation rules target the two ways a content extractor fails:
@@ -82,17 +82,37 @@ leaks into `body_text`.
 
 1. **Drop non-content elements:** `<script>`, `<style>`, `<noscript>`.
 2. **Drop chrome before grabbing text:** `<nav>`, `<header>`, `<footer>`,
-   `<aside>`. Doing this first is what keeps menu items and footer links out of
-   the body.
+   `<aside>`, plus non-content UI widgets flagged by ARIA role (`alert`,
+   `dialog`, `banner`) or conventional class names (`alert`, `banner`, `cookie`,
+   `consent`, `promo`, …). Doing this first is what keeps menu items, footer
+   links, and cookie/notice banners out of the body. The match is on a generic
+   *category* of furniture, never on any one site's wording.
 3. **Strip remaining tags** to plain text.
 4. **Decode HTML entities** (e.g. `&amp;` → `&`).
 5. **Normalize whitespace:** collapse runs of spaces; collapse three-or-more
    consecutive newlines down to two; trim each line.
 6. **Drop boilerplate lines:** cookie banners, "skip to content" links, lone
    copyright lines.
+7. **Trim a trailing related-content block:** a "recently viewed" / "you may also
+   like" / "related products" heading that appears *after enough real content*
+   (a word-count gate, not a line position, so a large carousel can't skew it)
+   drops that heading and everything after it. This catches related-content
+   carousels that survive into the extraction library's flattened text, where
+   tag/class removal can't reach them. The word gate guarantees main content is
+   never cut.
 
 The result is `body_text`: the page's main prose, with navigation, header,
-sidebar, and footer removed, entities decoded, and whitespace normalized.
+sidebar, footer, and trailing related-content widgets removed, entities decoded,
+and whitespace normalized.
+
+**Known limitation.** When a source page embeds the *same* description twice in
+one block — e.g. a truncated teaser immediately followed by the full text, with
+the teaser cut mid-word so it glues onto the full copy — that intra-block
+duplication can survive. A safe, generic de-duplicator cannot cleanly separate
+the glued copies, and a site-specific rule would violate the generic-extraction
+principle. The production fix is to extract the main-content *node* (so structural
+de-duplication applies) or to de-duplicate at chunk boundaries downstream — see
+[future-work.md](future-work.md).
 
 ## Title resolution
 

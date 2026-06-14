@@ -43,7 +43,7 @@ layer that would over-extract and asserts that its output is **rejected** (on
 link density) and the cascade **falls through** to a better layer. A
 complementary case feeds a too-short fragment and asserts rejection on length.
 These tests verify the robustness layer directly, since that layer is the
-load-bearing contribution.
+critical contribution.
 
 ## Golden-file tests
 

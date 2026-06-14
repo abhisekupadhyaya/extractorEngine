@@ -1,6 +1,6 @@
 # Design decisions
 
-This document records the load-bearing decisions behind the pipeline and the
+This document records the key design decisions behind the pipeline and the
 reasoning that produced them. Each is presented as **Context → Decision →
 Rationale → Alternatives considered**, so a reader can see not just what was built
 but why, and what was weighed and set aside. These are the choices that shaped the
@@ -56,7 +56,7 @@ validate-then-cascade layer — semantic HTML5 first, the library second, a dens
 heuristic third, and a crude floor that never returns empty. Each layer's output
 is validated (rejected on high link density, the over-extraction symptom, or on
 being too short, the under-extraction symptom) before it is trusted. That
-validation layer is the load-bearing, owned piece of the system. Mechanics are in
+validation layer is the critical, owned piece of the system. Mechanics are in
 [extraction.md](extraction.md).
 
 **Alternatives considered.** Hand-rolling a readability algorithm from scratch —

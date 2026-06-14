@@ -35,7 +35,7 @@ component-level references.
 | [storage-and-idempotency.md](storage-and-idempotency.md) | The JSONL output format, within-run vs across-run idempotency, pluggable storage backends, and atomic writes. |
 | [configuration.md](configuration.md) | CLI flags and environment variables, their defaults, and configuration precedence. |
 | [testing.md](testing.md) | The testing strategy: pure-function unit tests, golden-file tests, mocked-network fetcher tests, and the idempotency assertion. |
-| [design-decisions.md](design-decisions.md) | The load-bearing design decisions and their rationale, in Context → Decision → Rationale → Alternatives form. |
+| [design-decisions.md](design-decisions.md) | The critical design decisions and their rationale, in Context → Decision → Rationale → Alternatives form. |
 | [future-work.md](future-work.md) | Production evolution: scheduling, monitoring, cross-source dedup, distributed crawling, the service adapter, JS-rendered sites. |
 
 ## Terminology

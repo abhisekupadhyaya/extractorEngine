@@ -83,20 +83,30 @@ breadcrumb produces tags such as `["Books", "Poetry"]`.
 
 ## Dates
 
-`published_at` and `modified_at` are gathered from standard machine-readable
-sources, tried in order, and parsed to **tz-aware UTC** ISO8601:
+`published_at` and `modified_at` are gathered from **declared** and **served**
+date sources only, tried in order, and parsed to **tz-aware UTC** ISO8601:
 
 1. JSON-LD `datePublished` / `dateModified`.
 2. OpenGraph `article:published_time` / `article:modified_time`.
-3. The extraction library's parsed date.
-4. A `<time datetime="...">` element.
-5. The HTTP `Last-Modified` response header (for `modified_at`).
+3. A `<time datetime="...">` element (for `published_at`).
+4. The HTTP `Last-Modified` response header (for `modified_at`).
 
 If no source yields a parseable date, the field is `null` — meaning "no date
-exists", which is distinct from an empty value. On the sandbox site these fields
-are `null` on every record, because the pages carry no machine-readable dates;
-the extraction logic is present so that the same code produces populated dates on
-date-rich sites without schema changes.
+exists", which is distinct from an empty value.
+
+**Declared and served, never guessed.** The extraction library can additionally
+*guess* a date from page content, but that source is deliberately rejected. On a
+site with no real per-document dates the heuristic emits a single site-wide date
+stamped onto every record — which is worse than `null`, because it fabricates a
+recency signal a downstream ranker would act on. Only dates a page genuinely
+*declares* (JSON-LD, `article:*_time`, `<time>`) or a server genuinely *serves*
+(`Last-Modified`) are accepted; an honest `null` is preferred to a manufactured
+one.
+
+On the sandbox `books.toscrape.com` this means `published_at` is `null` — the
+pages declare no standard publication date — while `modified_at` is populated from
+the `Last-Modified` response header. The same code populates `published_at` on a
+site that declares a real one, with no schema change either way.
 
 ## The `extra` bag
 

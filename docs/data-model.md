@@ -20,8 +20,8 @@ level; derived quality signals are grouped under a nested `signals` block.
   "title":        "A Light in the Attic",                // resolved by a precedence cascade
   "body_text":    "clean main content, no nav/footer",   // extracted + cleaned
   "tags":         ["Books", "Poetry"],                   // standard web sources only; [] if none
-  "published_at": null,                                  // ISO8601 UTC, or null if no date exists
-  "modified_at":  null,                                  // ISO8601 UTC, or null
+  "published_at": "2016-06-24T00:00:00Z",                // ISO8601 UTC, or null if no date exists
+  "modified_at":  "2023-02-08T21:02:32Z",                // ISO8601 UTC, or null
   "fetched_at":   "2026-06-14T12:00:00Z",                // when we scraped it (required)
   "content_hash": "sha256-hex-of-body_text",             // change detection across re-crawls
   "signals": {
@@ -127,7 +127,7 @@ breaks added for readability; in the file it is a single line):
   "body_text": "A Light in the Attic\n\nIt's hard to imagine a world without A Light in the Attic. This now-classic collection of poetry and drawings from Shel Silverstein celebrates its 20th anniversary ...",
   "tags": ["Books", "Poetry"],
   "published_at": null,
-  "modified_at": null,
+  "modified_at": "2023-02-08T21:02:32Z",
   "fetched_at": "2026-06-14T12:00:00Z",
   "content_hash": "9b74c9897bac770ffc029102a200c5de...",
   "signals": {
@@ -141,7 +141,9 @@ breaks added for readability; in the file it is a single line):
 }
 ```
 
-On this sandbox site `published_at`/`modified_at` are `null` and `extra` is `{}`,
-because the source pages carry no machine-readable dates or JSON-LD. The fields
-exist regardless so that the same code produces richer records on date- and
-structured-data-rich sites without schema changes.
+On this sandbox site `extra` is `{}` because the book pages carry no JSON-LD, and
+`published_at` is `null` because the pages declare no standard publication date —
+only *declared* and *served* dates are accepted, never content-heuristic guesses
+(see [enrichment.md](enrichment.md)). `modified_at` is populated from the server's
+`Last-Modified` header. On a site that declares a real publication date the same
+code populates `published_at` too, with no schema change.

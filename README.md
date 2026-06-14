@@ -41,7 +41,7 @@ One **document object** per kept page, serialized as one line of JSONL:
   "body_text": "A Light in the Attic. It's hard to imagine a world without ...",
   "tags": ["Books", "Poetry"],
   "published_at": null,
-  "modified_at": null,
+  "modified_at": "2023-02-08T21:02:32Z",
   "fetched_at": "2026-06-14T12:00:00Z",
   "content_hash": "9b74c9897bac770ffc029102a200c5de...",
   "signals": {
@@ -94,6 +94,7 @@ network. See [docs/architecture.md](docs/architecture.md).
 .
 ├── README.md
 ├── docs/                      Design & reference documentation
+├── examples/                  Sample output records (sample_output.jsonl)
 ├── tests/                     Unit, validation, golden-file, and integration tests
 └── app/
     ├── pyproject.toml         Package metadata + the `scrape_site` entry point
@@ -119,6 +120,17 @@ needs **zero infrastructure**; optional Postgres / object-storage backends
 activate only when their environment variables are set. Full reference:
 [docs/configuration.md](docs/configuration.md).
 
+## Site chosen and why
+
+The crawler targets **books.toscrape.com** — a sandbox published explicitly for
+scraping practice, so there's no robots/terms/legal ambiguity to work around. It
+also exercises the parts that matter: real internal link structure (catalogue
+pagination and category pages to crawl) and many content-leaf product pages with
+genuine boilerplate — nav, breadcrumb, sidebar, footer — to strip, so extraction,
+content-type classification, and metadata enrichment all get a real workout. The
+pipeline is built generically (no site-specific selectors), so the same code
+generalizes to other sites; books.toscrape is the test bed, not a hardcoded target.
+
 ## Design at a glance
 
 - **Generic, not site-specific, extraction** — a layered, self-validating
@@ -134,7 +146,7 @@ activate only when their environment variables are set. Full reference:
   emit), so listing pages can be followed for links without polluting the corpus.
   [docs/crawling.md](docs/crawling.md)
 
-The full rationale for each load-bearing decision — context, alternatives, and
+The full rationale for each critical decision — context, alternatives, and
 trade-offs — is in [docs/design-decisions.md](docs/design-decisions.md).
 
 ## Documentation
@@ -149,7 +161,7 @@ trade-offs — is in [docs/design-decisions.md](docs/design-decisions.md).
 | [storage-and-idempotency.md](docs/storage-and-idempotency.md) | Output format and idempotency |
 | [configuration.md](docs/configuration.md) | Flags, env vars, precedence |
 | [testing.md](docs/testing.md) | Test strategy |
-| [design-decisions.md](docs/design-decisions.md) | The load-bearing decisions and why |
+| [design-decisions.md](docs/design-decisions.md) | The key design decisions and why |
 | [future-work.md](docs/future-work.md) | Production evolution and deliberate v1 boundaries |
 
 ## Testing

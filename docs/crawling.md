@@ -19,6 +19,19 @@ band of relevant content. Depth-first can pour the entire budget down a single
 deep branch before it ever sees breadth. A queue with a depth counter also bounds
 the crawl cleanly.
 
+**Intra-layer ordering: content before listings.** Within a single depth layer,
+the frontier visits content-looking URLs before listing-looking ones (a path that
+matches the same `category` / `tag` / `page-N` / `search` shape used elsewhere is
+ranked second). The reason is concrete: a seed home page typically links its whole
+category sidebar *and* its content leaves at the same depth, with the sidebar
+first in source order. Under a small `--max-pages` budget, naive insertion order
+would spend the entire budget on listing pages — which are crawled-but-not-kept —
+and emit nothing. Ranking content first means a bounded budget is spent on
+emittable pages, directly serving the "broad band of relevant content" goal above.
+The crawl is still breadth-first by depth; this is only a tiebreak *within* a
+depth. The insertion sequence is the final tiebreak, so ordering is fully
+deterministic and re-runs stay idempotent.
+
 ### Bounds
 
 Two independent bounds, with different jobs:
@@ -35,7 +48,7 @@ honored; whichever is reached first ends (or prunes) the crawl.
 
 Every discovered URL is reduced to a single **canonical** form before anything
 else happens to it. The canonical string is what gets hashed into the document
-`id` (`uuid5(canonical_url)`) and what fills the seen-set. This is load-bearing:
+`id` (`uuid5(canonical_url)`) and what fills the seen-set. This is critical:
 without it, `/p`, `/p#section`, and `/p?ref=email` would produce three different
 ids and therefore three duplicate records for one page — the no-duplicates
 guarantee would break at the front door, before any deduplication logic even runs.
